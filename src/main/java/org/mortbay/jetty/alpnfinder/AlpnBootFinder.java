@@ -167,13 +167,14 @@ public class AlpnBootFinder
             throw new IllegalArgumentException( "Target file must be a file and not a directory" );
         }
         Files.deleteIfExists( targetFile );
-
+        if ( !targetFile.toFile().mkdirs() )
+        {
+            throw new IllegalArgumentException( "Cannot create directories for target file: " + targetFile );
+        }
         try (OutputStream outputStream = Files.newOutputStream( targetFile ))
         {
             String url = request.mavenRepo + path;
-
             ContentResponse contentResponse = httpClient.newRequest( url ).send();
-
             int status = contentResponse.getStatus();
             if ( status != 200 )
             {
@@ -181,7 +182,6 @@ public class AlpnBootFinder
                     "not 200 but " + status + " when trying to GET alpn boot jar from url:" + url );
             }
             outputStream.write( contentResponse.getContent() );
-
         }
         LOGGER.info( "all done alpnboot jar downloaded as {}! Enjoy HTTP/2", targetFile );
     }
