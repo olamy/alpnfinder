@@ -162,14 +162,22 @@ public class AlpnBootFinder
         String path = "/org/mortbay/jetty/alpn/alpn-boot/${alpnVersion}/alpn-boot-${alpnVersion}.jar";
         path = StrSubstitutor.replace( path, subStrMap( alpnVersion ) );
         Path targetFile = Paths.get( request.destinationFile );
+        LOGGER.debug( "targetFile {}", targetFile );
         if ( Files.isDirectory( targetFile ) )
         {
-            throw new IllegalArgumentException( "Target file must be a file and not a directory" );
+            throw new IllegalArgumentException( "Target file must be a file and not a directory: " + targetFile );
         }
         Files.deleteIfExists( targetFile );
-        if ( !targetFile.toFile().mkdirs() )
+        if (targetFile.toFile().getParentFile() !=null)
         {
-            throw new IllegalArgumentException( "Cannot create directories for target file: " + targetFile );
+            if ( !targetFile.toFile().getParentFile().mkdirs() )
+            {
+                throw new IllegalArgumentException( "Cannot create directories for target file: " + targetFile );
+            }
+        }
+        if (!targetFile.toFile().createNewFile())
+        {
+            throw new IllegalArgumentException( "Cannot create target file: " + targetFile );
         }
         try (OutputStream outputStream = Files.newOutputStream( targetFile ))
         {
