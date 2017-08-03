@@ -197,10 +197,13 @@ public class AlpnBootFinder
             description = "Java version (Default: current one)" )
         String javaVersion = System.getProperty( "java.version" );
 
+
+        @Parameter( names = { "-pmu", "--properties-mapping-url" }, //
+            description = "Url of mapping properties file (Default: https://jetty-project.github.io/jetty-alpn/version_mapping.properties)" )
         String propertiesUrl = "https://jetty-project.github.io/jetty-alpn/version_mapping.properties";
 
         @Parameter( names = { "-h", "--help" }, description = "Display help", help = true )
-        private boolean help;
+        boolean help;
 
         public String getDestinationFile()
         {
