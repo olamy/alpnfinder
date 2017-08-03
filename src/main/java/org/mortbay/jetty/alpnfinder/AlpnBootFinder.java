@@ -20,27 +20,24 @@ package org.mortbay.jetty.alpnfinder;
 
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.text.StrSubstitutor;
 import org.eclipse.jetty.client.HttpClient;
 import org.eclipse.jetty.client.HttpProxy;
 import org.eclipse.jetty.client.api.ContentResponse;
-import org.eclipse.jetty.start.BaseHome;
-import org.eclipse.jetty.start.Module;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
 
 import java.io.Closeable;
-import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.StringReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 
 /**
  *
@@ -115,43 +112,20 @@ public class AlpnBootFinder
     public String findAlpnVersion( Request request )
         throws Exception
     {
-        // url format to get raw mod file
-        // https://github.com/eclipse/jetty.project/raw/jetty-9.4.x/jetty-alpn/jetty-alpn-server/src/main/config/modules/alpn-impl/alpn
-        // -1.8.0_05.mod
-        String url = request.modulesUrl + "-" + request.getJavaVersion() + ".mod";
-        Path tmpModules = Files.createTempDirectory( "modules" );
-        LOGGER.info( "creating directory: {}", tmpModules );
-        // because Module class really need a directory called modules...
-        File modules = new File( tmpModules.toFile(), "modules" );
-        modules.mkdirs();
-        Path modFile = Paths.get( modules.getPath(), "alpn.mod" );
-
-        try (OutputStream outputStream = Files.newOutputStream( modFile ))
+        String url = request.propertiesUrl;
+        ContentResponse contentResponse = httpClient.newRequest( url ).send();
+        int status = contentResponse.getStatus();
+        if ( status != 200 )
         {
-            ContentResponse contentResponse = httpClient.newRequest( url ).send();
-            int status = contentResponse.getStatus();
-            if ( status != 200 )
-            {
-                throw new RuntimeException( "not 200 but " + status + " when trying to GET mod file from url:" + url );
-            }
-            outputStream.write( contentResponse.getContent() );
+            throw new RuntimeException( "not 200 but " + status + " when trying to GET mod file from url:" + url );
         }
 
-        Module module = new Module( new BaseHome(), modFile );
-
-//      [files]
-//      maven://org.mortbay.jetty.alpn/alpn-boot/8.1.0.v20141016|lib/alpn/alpn-boot-8.1.0.v20141016.jar
-//      or
-//      http://central.maven.org/maven2/org/mortbay/jetty/alpn/alpn-boot/8.1.4.v20150727/alpn-boot-8.1.4.v20150727.jar|lib/alpn/alpn-boot-8.1.4.v20150727.jar
-        List<String> files = module.getFiles();
-        // we suppose it is the first one
-        String first = files.get( 0 );
-
-        String version =
-            StringUtils.substringAfterLast( StringUtils.substringBeforeLast( first, ".jar" ), "alpn-boot-" );
-
-        LOGGER.info( "found version {} from {}", version, first );
-        return version;
+        Properties properties = new Properties();
+        try (StringReader reader = new StringReader( contentResponse.getContentAsString() ))
+        {
+            properties.load( reader );
+        }
+        return properties.getProperty( request.javaVersion );
     }
 
     public void download( Request request, String alpnVersion )
@@ -168,14 +142,14 @@ public class AlpnBootFinder
             throw new IllegalArgumentException( "Target file must be a file and not a directory: " + targetFile );
         }
         Files.deleteIfExists( targetFile );
-        if (targetFile.toFile().getParentFile() !=null)
+        if ( targetFile.toFile().getParentFile() != null )
         {
             if ( !targetFile.toFile().getParentFile().mkdirs() )
             {
                 throw new IllegalArgumentException( "Cannot create directories for target file: " + targetFile );
             }
         }
-        if (!targetFile.toFile().createNewFile())
+        if ( !targetFile.toFile().createNewFile() )
         {
             throw new IllegalArgumentException( "Cannot create target file: " + targetFile );
         }
@@ -191,7 +165,7 @@ public class AlpnBootFinder
             }
             outputStream.write( contentResponse.getContent() );
         }
-        LOGGER.info( "all done alpnboot jar downloaded as {}! Enjoy HTTP/2", targetFile );
+        LOGGER.info( "all done alpnboot {} jar downloaded as {}! Enjoy HTTP/2", alpnVersion, targetFile );
     }
 
     private Map<String, String> subStrMap( String alpnVersion )
@@ -205,29 +179,25 @@ public class AlpnBootFinder
     {
         @Parameter( names = { "-df", "--destination-file" }, //
             description = "Destination file to download the ALPN Boot jar (Default: alpn-boot.jar)" )
-        public String destinationFile = "alpn-boot.jar";
+        String destinationFile = "alpn-boot.jar";
 
         @Parameter( names = { "-ph", "--proxy-host" }, //
             description = "Proxy host to use if any" )
-        public String proxyHost;
+        String proxyHost;
 
         @Parameter( names = { "-pp", "--proxy-port" }, //
             description = "Proxy port to use if any" )
-        public int proxyPort;
+        int proxyPort;
 
         @Parameter( names = { "-mp", "--maven-repository" }, //
             description = "Maven repository to use (Default: https://repo.maven.apache.org/maven2)" )
-        public String mavenRepo = "https://repo.maven.apache.org/maven2";
+        String mavenRepo = "https://repo.maven.apache.org/maven2";
 
         @Parameter( names = { "-jv", "--java-version" }, //
             description = "Java version (Default: current one)" )
-        public String javaVersion = System.getProperty( "java.version" );
+        String javaVersion = System.getProperty( "java.version" );
 
-        @Parameter( names = { "-mu", "--modules-url" }, //
-            description = "Modules url to use (Default: https://github.com/eclipse/jetty.project/raw/jetty-9.4.x/jetty-alpn/jetty-alpn-server/src/main/config/modules/alpn-impl/alpn)" )
-        // -1.8.0_05.mod
-        public String modulesUrl =
-            "https://github.com/eclipse/jetty.project/raw/jetty-9.4.x/jetty-alpn/jetty-alpn-server/src/main/config/modules/alpn-impl/alpn";
+        String propertiesUrl = "https://jetty-project.github.io/jetty-alpn/version_mapping.properties";
 
         @Parameter( names = { "-h", "--help" }, description = "Display help", help = true )
         private boolean help;
@@ -316,14 +286,6 @@ public class AlpnBootFinder
             this.help = help;
         }
 
-        public String getModulesUrl()
-        {
-            return modulesUrl;
-        }
 
-        public void setModulesUrl( String modulesUrl )
-        {
-            this.modulesUrl = modulesUrl;
-        }
     }
 }
